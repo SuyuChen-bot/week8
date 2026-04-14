@@ -31,8 +31,21 @@ def index():
     link += "<a href=/welcome?u=素宥&dep=靜宜資管>GET傳值</a><hr>"
     link += "<a href=/account>POST傳值(帳號密碼)</a><hr>"
     link += "<a href=/math>數學運算</a><hr>"
-    link += "<br><a href=/read>讀取Firestore資料(根據lab遞減排序，取前4筆)</a><br>"
+    link += "<a href=/read>讀取Firestore資料(根據lab遞減排序，取前4筆)</a><br>"
     return link
+
+@app.route("/read")
+def read():
+    db = firestore.client()
+
+    Temp = ""
+    collection_ref = db.collection("靜宜資管2026a")
+    #docs = collection_ref.where(filter=FieldFilter("lab",">", "579")).get()
+    docs = collection_ref.order_by("lab").limit(4).get()
+    for doc in docs:
+        Temp += str(doc.to_dict()) + "<br>"
+
+    return Temp
 
 @app.route("/mis")
 def course():
