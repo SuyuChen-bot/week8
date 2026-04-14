@@ -2,6 +2,7 @@ import os
 import json
 import firebase_admin
 from firebase_admin import credentials, firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 # 判斷是在 Vercel 還是本地
 if os.path.exists('serviceAccountKey.json'):
@@ -30,6 +31,7 @@ def index():
     link += "<a href=/welcome?u=素宥&dep=靜宜資管>GET傳值</a><hr>"
     link += "<a href=/account>POST傳值(帳號密碼)</a><hr>"
     link += "<a href=/math>數學運算</a><hr>"
+    link += "<br><a href=/read>讀取Firestore資料(根據lab遞減排序，取前4筆)</a><br>"
     return link
 
 @app.route("/mis")
