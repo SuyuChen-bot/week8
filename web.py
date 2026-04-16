@@ -31,8 +31,57 @@ def index():
     link += "<a href=/welcome?u=素宥&dep=靜宜資管>GET傳值</a><hr>"
     link += "<a href=/account>POST傳值(帳號密碼)</a><hr>"
     link += "<a href=/math>數學運算</a><hr>"
-    link += "<a href=/read>讀取Firestore資料(根據lab遞減排序，取前4筆)</a><br>"
+    link += "<a href=/read>讀取Firestore資料(根據lab遞減排序，取前4筆)</a><hr>"
+    link += "<a href=/search>靜宜資管老師查詢</a><br>"
     return link
+
+@app.route("/search")
+def search():
+    db = firestore.client()
+    collection_ref = db.collection("靜宜資管2026a")
+    
+    # 1. 取得使用者輸入的關鍵字
+    keyword = request.values.get("keyword")
+    
+    # 2. 建立 HTML 表單字串
+    # 注意這裡：action 必須改成 "/search"，否則按下按鈕會跳到 404
+    # placeholder 加上引號，並加入 value="{val}" 讓輸入的字留在框框裡
+    form_html = """
+    <h2>靜宜資管老師查詢</h2>
+    <p>請輸入老師姓名關鍵字：</p>
+    <form action="/search" method="GET" style="margin-bottom: 20px;">
+        <input type="text" name="keyword" placeholder=>
+        <button type="submit">搜尋</button>
+    </form>
+    <hr>
+    """.format(val=keyword if keyword else "")
+
+    # 3. 邏輯判斷：如果沒有 keyword，直接回傳表單
+    if not keyword:
+        return form_html + "請輸入關鍵字進行搜尋。<br><br><a href='/'>回首頁</a>"
+
+    # 4. 如果有關鍵字，才讀取資料庫
+    docs = collection_ref.order_by("lab").get()
+    
+    Temp = ""
+    found_count = 0
+    
+    for doc in docs:
+        user = doc.to_dict()
+        user_name = user.get("name", "")
+        
+        # 核心篩選邏輯
+        if keyword in user_name:
+            Temp += f"名字: {user_name}, Lab: {user.get('lab')}<br>"
+            found_count += 1
+
+    # 5. 組合搜尋結果
+    if found_count > 0:
+        result_msg = f"<h3>關鍵字「{keyword}」的搜尋結果：</h3>"
+    else:
+        result_msg = f"<h3>搜尋結果：</h3>找不到包含「{keyword}」的資料。"
+
+    return form_html + result_msg + Temp + "<br><br><a href='/'>回首頁</a>"
 
 @app.route("/read")
 def read():
