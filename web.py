@@ -1,3 +1,7 @@
+import requests
+from bs4 import BeautifulSoup
+import urllib3
+
 import os
 import json
 import firebase_admin
@@ -32,8 +36,29 @@ def index():
     link += "<a href=/account>POST傳值(帳號密碼)</a><hr>"
     link += "<a href=/math>數學運算</a><hr>"
     link += "<a href=/read>讀取Firestore資料(根據lab遞減排序，取前4筆)</a><hr>"
-    link += "<a href=/search>靜宜資管老師查詢</a><br>"
+    link += "<a href=/search>靜宜資管老師查詢</a><hr>"
+    link += "<a href=/sp1>爬蟲</a><hr>"
     return link
+
+
+@app.route("/sp1")
+def sp1():
+    R = ""
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    url = "https://tcyang2026-a.vercel.app/about"
+    Data = requests.get(url, verify=False)
+    Data.encoding = "utf-8"
+    #print(Data.text)
+    sp = BeautifulSoup(Data.text, "html.parser")
+    result=sp.select("td a")
+
+    for item in result:
+        R += item + "<br>" + item.get("href") + "<br><br>"
+    return R
+
+
+
+
 
 @app.route("/search")
 def search():

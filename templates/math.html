@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>數學運算</title>
+</head>
+<body>
+    <h2>數學運算器</h2>
+
+<form method="POST">
+    <p>請輸入 x：<input type="number" name="x" required></p>
+    
+    <p>請輸入運算符號 (+, -, *, /)：
+        <input type="text" name="opt">
+    </p>
+    
+    <p>請輸入 y：<input type="number" name="y" required></p>
+    
+    <button type="submit">計算</button>
+</form>
+
+    <hr>
+
+    {% if error_msg %}
+        <p style="color: red;">{{ error_msg }}</p>
+    {% endif %}
+
+    {% if Result is not none %}
+        <p><strong>{{ x }} {{ opt }} {{ y }} 的結果是 {{ Result }}</strong></p>
+    {% endif %}
+
+    <a href="/">回首頁</a>
+</body>
+</html>
