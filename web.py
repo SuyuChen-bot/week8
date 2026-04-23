@@ -38,24 +38,90 @@ def index():
     link += "<a href=/read>讀取Firestore資料(根據lab遞減排序，取前4筆)</a><hr>"
     link += "<a href=/search>靜宜資管老師查詢</a><hr>"
     link += "<a href=/sp1>爬蟲</a><hr>"
+    link += "<a href=/movie>查詢即將上映電影</a><hr>"
     return link
 
 
-@app.route("/sp1")
-def sp1():
-    R = ""
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    url = "https://tcyang2026-a.vercel.app/about"
-    Data = requests.get(url, verify=False)
-    Data.encoding = "utf-8"
-    #print(Data.text)
-    sp = BeautifulSoup(Data.text, "html.parser")
-    result=sp.select("td a")
+import re  # 記得在檔案最上方加入這行
 
-    for item in result:
-        R += item + "<br>" + item.get("href") + "<br><br>"
+import re
+
+import re
+
+@app.route("/movie")
+def movie():
+    R = "<h2>開眼即將上映電影</h2>"
+    url = "http://www.atmovies.com.tw/movie/next/"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    # 定義要刪除的無效名稱（黑名單）
+    blacklist = ["電影首頁", "本期二輪", "電影", "List All", "本周新片", "本期首輪", "近期上映", "新片快報", "票房排行榜", "資料館"]
+    
+    try:
+        data = requests.get(url, headers=headers, timeout=10)
+        data.encoding = "utf-8"
+        sp = BeautifulSoup(data.text, "html.parser")
+        links = sp.find_all("a")
+        
+        movie_list = []
+        for link in links:
+            href = link.get("href")
+            title = link.text.strip()
+            
+            # 1. 基本篩選：必須是電影連結且文字長度大於 1
+            if href and "/movie/" in href and len(title) > 1:
+                
+                # 2. 黑名單篩選：剔除你提到的那些選單文字
+                if title not in blacklist and not any(word in title for word in ["電影首頁", "List All"]):
+                    
+                    # 3. 強力去日期：不管開頭是 2026/05/07 還是 5/7
+                    clean_title = re.sub(r'^(\d{4}/)?\d{1,2}/\d{1,2}\s*', '', title)
+                    
+                    # 4. 再次確認 clean_title 不是空的且不在黑名單內
+                    if clean_title and clean_title not in blacklist:
+                        full_url = "http://www.atmovies.com.tw" + href
+                        
+                        # 5. 避免重複抓取
+                        if clean_title not in [m['name'] for m in movie_list]:
+                            movie_list.append({"name": clean_title, "url": full_url})
+
+        # 輸出結果
+        for m in movie_list:
+            R += f"電影名稱：{m['name']}<br>"
+            R += f"連結：<a href='{m['url']}' target='_blank'>{m['url']}</a><br><hr>"
+            
+        if not movie_list:
+            R += "目前沒抓到電影，請檢查網頁是否改版。"
+
+    except Exception as e:
+        R += f"發生錯誤：{e}"
+    
+    R += "<br><a href='/'>回首頁</a>"
     return R
 
+@app.route("/sp1")
+def sp1():
+    R = "<h2>關於網頁內容爬取</h2>"
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
+    # 注意：在 Vercel 環境中 127.0.0.1 是抓不到內容的
+    # 這裡建議改為抓取你部署後的正式網址，或是直接分析 templates 內容
+    url = "https://www1.pu.edu.tw/~tcyang/course.html" 
+    try:
+        Data = requests.get(url, verify=False)
+        Data.encoding = "utf-8"
+        sp = BeautifulSoup(Data.text, "html.parser")
+        result = sp.select("td a")
+
+        for item in result:
+            # 修正：item 是標籤物件，不能直接相加，要用 .text
+            R += f"連結文字: {item.text}<br>"
+            R += f"網址: {item.get('href')}<br><br>"
+    except Exception as e:
+        R += f"抓取失敗：{e}"
+        
+    R += "<br><a href='/'>回首頁</a>"
+    return R
 
 
 

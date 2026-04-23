@@ -16,8 +16,9 @@ Data.encoding = "utf-8"
 
 #print(Data.text)
 sp = BeautifulSoup(Data.text, "html.parser")
-result=sp.find("id=h2text")
+result=sp.find(id="h2text")
 
 for item in result:
-	print(item)
+	print(item.text)
+	print(item.get("href"))
 	print()
