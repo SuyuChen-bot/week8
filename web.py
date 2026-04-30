@@ -39,6 +39,8 @@ def index():
     link += "<a href=/search>靜宜資管老師查詢</a><hr>"
     link += "<a href=/sp1>爬蟲</a><hr>"
     link += "<a href=/movie>查詢即將上映電影</a><hr>"
+    link += "<a href=/movie2>爬取電影進資料庫</a><hr>"
+    link += "<a href=/movie3>查詢電影資料庫</a><hr>"
     return link
 
 
@@ -47,6 +49,97 @@ import re  # 記得在檔案最上方加入這行
 import re
 
 import re
+
+
+@app.route("/movie3", methods=["GET", "POST"])
+def movie3():
+    db = firestore.client()
+    keyword = request.values.get("keyword")
+    
+    # HTML 表單
+    form_html = """
+    <h2>即將上映查詢</h2>
+    <form action="/movie3" method="POST">
+        <input type="text" name="keyword" placeholder="請輸入電影片名關鍵字" value="{val}">
+        <button type="submit">查詢</button>
+    </form>
+    <hr>
+    """.format(val=keyword if keyword else "")
+
+    if not keyword:
+        return form_html + "請輸入關鍵字搜尋資料庫中的電影。<br><br><a href='/'>回首頁</a>"
+
+    # 查詢資料庫
+    docs = db.collection("UpcomingMovies").get()
+    result_html = ""
+    found = False
+
+    for doc in docs:
+        m = doc.to_dict()
+        if keyword in m.get("name", ""):
+            result_html += f"電影名稱：{m.get('name')}<br>"
+            result_html += f"更新日期：{m.get('update')}<br>"
+            result_html += f"連結：<a href='{m.get('url')}' target='_blank'>電影介紹</a><br><hr>"
+            found = True
+
+    if not found:
+        result_html = f"找不到包含「{keyword}」的電影資料。"
+
+    return form_html + result_html + "<br><a href='/'>回首頁</a>"
+
+@app.route("/movie2")
+def movie2():
+    db = firestore.client()
+    url = "http://www.atmovies.com.tw/movie/next/"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    
+    blacklist = ["電影首頁", "本期二輪", "電影", "List All", "本周新片", "本期首輪", "近期上映", "新片快報", "票房排行榜", "資料館"]
+    update_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    count = 0
+    debug_msg = "" # 用來紀錄過程，方便除錯
+
+    try:
+        # 1. 抓取網頁
+        data = requests.get(url, headers=headers, timeout=10)
+        data.encoding = "utf-8"
+        sp = BeautifulSoup(data.text, "html.parser")
+        links = sp.find_all("a")
+        
+        debug_msg += f"成功讀取網頁，發現 {len(links)} 個連結。<br>"
+
+        # 2. 解析並存檔
+        for link in links:
+            href = link.get("href")
+            title = link.text.strip()
+            
+            if href and "/movie/" in href and len(title) > 1:
+                if title not in blacklist and not any(word in title for word in ["電影首頁", "List All"]):
+                    # 移除日期文字
+                    clean_title = re.sub(r'^(\d{4}/)?\d{1,2}/\d{1,2}\s*', '', title)
+                    
+                    if clean_title and clean_title not in blacklist:
+                        full_url = "http://www.atmovies.com.tw" + href
+                        
+                        # 寫入 Firestore
+                        doc_ref = db.collection("UpcomingMovies").document(clean_title)
+                        doc_ref.set({
+                            "name": clean_title,
+                            "url": full_url,
+                            "update": update_time
+                        })
+                        count += 1
+
+        # 3. 確保回傳結果給瀏覽器
+        if count > 0:
+            return f"</h2>近期上映電影已爬蟲及存檔完畢，網站最近更新日期為：{update_time}<br><br><a href='/'>回首頁</a>"
+        else:
+            return f"<h2>更新完成，但沒有抓到新電影。</h2>過程紀錄：{debug_msg}<br><a href='/'>回首頁</a>"
+
+    except Exception as e:
+        # 如果發生錯誤（例如 Firebase 沒連上），會顯示在這裡
+        return f"<h2>執行失敗</h2>錯誤訊息：{e}<br><br><a href='/'>回首頁</a>"
+
 
 @app.route("/movie")
 def movie():
