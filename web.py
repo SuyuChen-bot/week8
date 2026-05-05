@@ -41,45 +41,104 @@ def index():
     link += "<a href=/movie>查詢即將上映電影</a><hr>"
     link += "<a href=/movie2>爬取電影進資料庫</a><hr>"
     link += "<a href=/movie3>查詢電影資料庫</a><hr>"
-    link += "<a href=/road>"
+    link += "<a href=/road>台中市十大肇事路口</a><hr>"
+    link += "<a href=/weather>天氣查詢</a><hr>"
     return link
+
+@app.route("/weather", methods=["GET", "POST"])
+def weather():
+    import requests
+    import json
+    import urllib3
+
+    # 關閉 InsecureRequestWarning 警告
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    city = request.values.get("city")
+    
+    # HTML 表單介面 (維持你 movie3 的寫法風格)
+    form_html = """
+    <h2>縣市天氣查詢</h2>
+    <form action="/weather" method="POST">
+        <input type="text" name="city" placeholder= "{val}">
+        <button type="submit">查詢</button>
+    </form>
+    <hr>
+    """.format(val=city if city else "")
+
+    if not city:
+        return form_html + "請輸入縣市名稱進行查詢。<br><br><a href='/'>回首頁</a>"
+
+    # --- 以下是你提供的範本邏輯 ---
+    city = city.replace("台","臺")
+    token = "rdec-key-123-45678-011121314"
+    url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization=" + token + "&format=JSON&locationName=" + str(city)
+
+    try:
+        # 加入 verify=False 參數
+        Data = requests.get(url, verify=False, timeout=10) 
+        
+        JsonData = json.loads(Data.text)
+        
+        # 判斷是否有抓到資料
+        if JsonData["records"]["location"]:
+            Weather = JsonData["records"]["location"][0]["weatherElement"][0]["time"][0]["parameter"]["parameterName"]
+            Rain = JsonData["records"]["location"][0]["weatherElement"][1]["time"][0]["parameter"]["parameterName"]
+            
+            result_msg = f"<h3>{city} 的天氣是：{Weather}，降雨機率：{Rain}%</h3>"
+        else:
+            result_msg = f"<h3>找不到「{city}」的天氣資料，請確認輸入是否正確。</h3>"
+            
+    except Exception as e:
+        result_msg = f"<h3>查詢失敗：{str(e)}</h3>"
+    
+    # --- 範本邏輯結束 ---
+
+    return form_html + result_msg + "<br><a href='/'>回首頁</a>"
 
 @app.route("/road")
 def get_road_data():
     import requests
     import urllib3
     
-    # 1. 關閉惱人的 SSL 警告
+    # 關閉 SSL 警告
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
     
     url = "https://datacenter.taichung.gov.tw/swagger/OpenData/a1b899c0-511f-4e3d-b22b-814982a97e41"
     
-    # 2. 關鍵：偽裝成正常的瀏覽器
+    # 使用 Session 保持連線會話
+    session = requests.Session()
+    
+    # 更完整的瀏覽器標頭偽裝
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Cache-Control': 'max-age=0',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
     }
     
     try:
-        # 3. 同時使用 headers (解決 10054) 和 verify=False (解決 SSL)
-        response = requests.get(url, headers=headers, verify=False, timeout=10)
+        # 使用 session 進行請求，並增加 timeout
+        response = session.get(url, headers=headers, verify=False, timeout=20)
         
         if response.status_code == 200:
             json_data = response.json()
-            result_list = []
+            result_list = ["<h2>台中市十大肇事路口</h2>"]
             
             for item in json_data:
-                # 確保這些欄位名稱與 API 回傳的一致
-                msg = f"{item['路口名稱']}, 總共發生 {item['總件數']} 件事故"
+                msg = f" {item['路口名稱']}：總共發生 <b>{item['總件數']}</b> 件事故"
                 result_list.append(msg)
             
-            # 使用 <br> 讓網頁換行
-            return "<br>".join(result_list)
+            return "<br>".join(result_list) + "<br><br><a href='/'>回首頁</a>"
+        
         else:
-            return f"伺服器回傳錯誤代碼：{response.status_code}"
+            return f"伺服器回應錯誤碼：{response.status_code} <br><a href='/'>回首頁</a>"
 
     except Exception as e:
-        return f"連線失敗原因：{str(e)}"
-
+        # 如果還是 10054，說明對方的防火牆可能暫時封鎖了你的 IP
+        return f"<h3>目前無法連線至政府資料庫</h3>錯誤代碼：10054<br>原因：伺服器拒絕了連線請求。<br>建議：請等待 1 分鐘後再重新整理，或檢查電腦是否開啟了 VPN。<br><br><a href='/'>回首頁</a>"
 import re  # 記得在檔案最上方加入這行
 
 import re
