@@ -41,8 +41,44 @@ def index():
     link += "<a href=/movie>查詢即將上映電影</a><hr>"
     link += "<a href=/movie2>爬取電影進資料庫</a><hr>"
     link += "<a href=/movie3>查詢電影資料庫</a><hr>"
+    link += "<a href=/road>"
     return link
 
+@app.route("/road")
+def get_road_data():
+    import requests
+    import urllib3
+    
+    # 1. 關閉惱人的 SSL 警告
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
+    url = "https://datacenter.taichung.gov.tw/swagger/OpenData/a1b899c0-511f-4e3d-b22b-814982a97e41"
+    
+    # 2. 關鍵：偽裝成正常的瀏覽器
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
+    
+    try:
+        # 3. 同時使用 headers (解決 10054) 和 verify=False (解決 SSL)
+        response = requests.get(url, headers=headers, verify=False, timeout=10)
+        
+        if response.status_code == 200:
+            json_data = response.json()
+            result_list = []
+            
+            for item in json_data:
+                # 確保這些欄位名稱與 API 回傳的一致
+                msg = f"{item['路口名稱']}, 總共發生 {item['總件數']} 件事故"
+                result_list.append(msg)
+            
+            # 使用 <br> 讓網頁換行
+            return "<br>".join(result_list)
+        else:
+            return f"伺服器回傳錯誤代碼：{response.status_code}"
+
+    except Exception as e:
+        return f"連線失敗原因：{str(e)}"
 
 import re  # 記得在檔案最上方加入這行
 
