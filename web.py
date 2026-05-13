@@ -24,6 +24,22 @@ firebase_admin.initialize_app(cred)
 from flask import Flask, render_template,request
 from datetime import datetime
 
+# 1. 初始化 Firebase (確保這段程式碼有執行到)
+if not firebase_admin._apps:
+    if os.path.exists('serviceAccountKey.json'):
+        cred = credentials.Certificate('serviceAccountKey.json')
+    else:
+        firebase_config = os.getenv('FIREBASE_CONFIG')
+        cred_dict = json.loads(firebase_config)
+        cred = credentials.Certificate(cred_dict)
+    firebase_admin.initialize_app(cred)
+
+# 2. 【關鍵修正】定義全域變數 db
+# 必須放在這裡，所有路由函式 (@app.route) 才能讀到它
+db = firestore.client()
+
+from flask import jsonify
+
 app = Flask(__name__)
 
 @app.route("/")
@@ -43,7 +59,112 @@ def index():
     link += "<a href=/movie3>查詢電影資料庫</a><hr>"
     link += "<a href=/road>台中市十大肇事路口</a><hr>"
     link += "<a href=/weather>天氣查詢</a><hr>"
+    link += "<a href=/rate>本周新片</a><hr>"
     return link
+
+from datetime import datetime  # 確保檔案頂部有這行
+
+
+@app.route("/webhook", methods=['POST'])
+def webhook():
+    # 接收 Dialogflow 的請求
+    req = request.get_json(silent=True, force=True)
+    
+    # 取得 Dialogflow 傳來的分級參數 (例如：普遍級)
+    # 請確保 Dialogflow 中的參數名稱也是 "rate"
+    target_rate = req.get("queryResult").get("parameters").get("rate")
+
+    # 1. 邏輯檢查：到 Firestore 進行篩選
+    # 使用你剛才創立的集合名稱 "本週新片含分級"
+    movies_ref = db.collection("本週新片含分級")
+    docs = movies_ref.where("rate", "==", target_rate).get()
+    
+    movie_list = []
+    for doc in docs:
+        m = doc.to_dict()
+        movie_list.append(m.get("title"))
+
+    # 2. 姓名標示：在訊息開頭加上你的名字
+    if movie_list:
+        reply = f"陳素宥您好！為您查詢到本週上映的 {target_rate} 電影有：\n"
+        reply += "、".join(movie_list)
+    else:
+        reply = f"陳素宥您好，目前資料庫中沒有找到符合 {target_rate} 的電影喔。"
+
+    # 回傳給 Dialogflow 顯示
+    return jsonify({"fulfillmentText": reply})
+    
+@app.route("/rate")
+def rate():
+    # 爬取開眼電影「本週新片」
+    url = "https://www.atmovies.com.tw/movie/new/"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        Data = requests.get(url, headers=headers, verify=False)
+        Data.encoding = "utf-8"
+        sp = BeautifulSoup(Data.text, "html.parser")
+        
+        # 取得更新日期
+        lastUpdate_element = sp.find(class_="smaller09")
+        lastUpdate = lastUpdate_element.text[5:] if lastUpdate_element else "未知"
+        
+        result = sp.select(".filmList")
+        count = 0
+
+        for x in result:
+            title = x.find("a").text
+            introduce = x.find("p").text
+            movie_id = x.find("a").get("href").replace("/", "").replace("movie", "")
+            hyperlink = "http://www.atmovies.com.tw/movie/" + movie_id
+            picture = f"https://www.atmovies.com.tw/photo101/{movie_id}/pm_{movie_id}.jpg"
+
+            # 分級判斷邏輯
+            r_tag = x.find(class_="runtime").find("img")
+            rate_label = "未分級"
+            if r_tag:
+                rr = r_tag.get("src").replace("/images/cer_", "").replace(".gif", "")
+                mapping = {"G": "普遍級", "P": "保護級", "F2": "輔12級", "F5": "輔15級", "R": "限制級"}
+                rate_label = mapping.get(rr, "限制級")
+
+            # 解析片長與上映日期
+            t_text = x.find(class_="runtime").text
+            showLength = "0"
+            showDate = "未知"
+            if "片長" in t_text:
+                showLength = t_text[t_text.find("片長")+3 : t_text.find("分")]
+            if "上映日期" in t_text:
+                # 擷取原始字串，例如 "5/8/2026"
+                rawDate = t_text[t_text.find("上映日期")+5 : t_text.find("上映廳數")-8].strip()
+                
+                # --- 日期補零處理開始 ---
+                try:
+                    # 解析原始格式 (月/日/年)
+                    date_obj = datetime.strptime(rawDate, "%m/%d/%Y")
+                    # 轉換為目標格式 (年/月/日) 並自動補零，例如 "2026/05/08"
+                    showDate = date_obj.strftime("%Y/%m/%d")
+                except:
+                    showDate = rawDate  # 若格式不符則保留原始狀態
+                # --- 日期補零處理結束 ---
+
+            doc = {
+                "title": title,
+                "introduce": introduce,
+                "picture": picture,
+                "hyperlink": hyperlink,
+                "showDate": showDate,
+                "showLength": int(showLength) if showLength.isdigit() else 0,
+                "rate": rate_label,
+                "lastUpdate": lastUpdate
+            }
+
+            # 儲存至 Firestore
+            db.collection("本週新片含分級").document(movie_id).set(doc)
+            count += 1
+
+        return f"<h2>成功！</h2>已爬取 {count} 部新片，存檔至「本週新片含分級」集合。<br>網站更新日期：{lastUpdate}<br><br><a href='/'>回首頁</a>"
+    
+    except Exception as e:
+        return f"<h2>爬取失敗</h2>錯誤訊息：{e}<br><a href='/'>回首頁</a>"
 
 @app.route("/weather", methods=["GET", "POST"])
 def weather():
