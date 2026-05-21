@@ -60,18 +60,37 @@ def webhook6():
     if request.method == "GET":
         return "Webhook 伺服器正常運作中！請使用 Dialogflow 等工具發送 POST 請求。"
         
-    req = request.get_json(force=True)
-    action = req.get("queryResult").get("action")
-    
-    if action == "rateChoice":
-        pass 
+    # 1. 使用安全的方式解析 JSON，防止任何格式錯誤導致 500
+    req = request.get_json(silent=True, force=True)
+    if not req:
+        return make_response(jsonify({"fulfillmentText": "收到的資料格式不正確。"}))
         
-    elif action == "CityWeather":
-        city = req.get("queryResult").get("parameters").get("city")
+    query_result = req.get("queryResult", {})
+    
+    # 2. 同時抓取 action 和 intent 名稱，雙重保險！
+    action = query_result.get("action")
+    intent_name = query_result.get("intent", {}).get("displayName")
+    
+    # 🎬 判斷【電影查詢】：不論是 action 對了，還是 Intent 名字叫做 MovieQuery 都會進來
+    if action == "rateChoice" or intent_name == "MovieQuery":
+        # 精準拿到你在 Dialogflow 設定的電影分級參數 (rate)
+        rate = query_result.get("parameters", {}).get("rate")
+        
+        if rate == "普遍級":
+            info = "🎬 為您推薦的普遍級電影：【玩具總動員4】、【冰雪奇緣2】！"
+        elif rate:
+            info = f"🎬 您查詢的是【{rate}】電影，目前正在為您搜尋中！"
+        else:
+            info = "🎬 請告訴我您想查詢什麼分級的電影（例如：普遍級）。"
+            
+        return make_response(jsonify({"fulfillmentText": info}))
+        
+    # 🌤️ 判斷【天氣查詢】
+    elif action == "CityWeather" or intent_name == "CityWeather":
+        city = query_result.get("parameters", {}).get("city")
         
         # ⚠️ 如果這個預設 token 不能用，請一定要去氣象署網站申請免費的 CWA-XXXX 授權碼替換
         token = "rdec-key-123-45678-011121314"
-        
         url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization=" + token + "&format=JSON&locationName=" + str(city)
         
         try:
@@ -88,14 +107,16 @@ def webhook6():
             MinT = weather_json["records"]["location"][0]["weatherElement"][2]["time"][0]["parameter"]["parameterName"]
             MaxT = weather_json["records"]["location"][0]["weatherElement"][4]["time"][0]["parameter"]["parameterName"]
             
-            info = city + "的天氣是" + Weather + "，降雨機率：" + Rain + "%"
-            info += "，溫度：" + MinT + "-" + MaxT + "度"
+            info = city + "的天氣是" + Weather + "，降雨機率：" + Rain + "%" + "，溫度：" + MinT + "-" + MaxT + "度"
             
             return make_response(jsonify({"fulfillmentText": info}))
             
         except Exception as e:
-            # 如果中途任何地方當掉，捕捉錯誤並回傳，不讓連線中斷
-            return make_response(jsonify({"fulfillmentText": f"程式執行發生錯誤：{str(e)}"}))
+            return make_response(jsonify({"fulfillmentText": f"天氣程式執行發生錯誤：{str(e)}"}))
+            
+    # 🚨 防呆機制：萬一都不是，絕對要回傳一個格式，不然會噴 500 錯誤！
+    else:
+        return make_response(jsonify({"fulfillmentText": "Webhook 收到請求，但無法辨識此 Intent 或 Action。"}))
 
 # ==================== 機器人 Webhook 3 (第二個，名稱已徹底分開) ====================
 @app.route("/webhook3", methods=["POST"])
