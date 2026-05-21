@@ -5,9 +5,10 @@ from datetime import datetime
 import requests
 from bs4 import BeautifulSoup
 import urllib3
-from flask import Flask, render_template, request, jsonify, make_response
 import firebase_admin
 from firebase_admin import credentials, firestore
+import requests  # 1. 記得補上這個
+from flask import Flask, render_template, request, make_response, jsonify, json
 
 # 關閉 InsecureRequestWarning 警告 (統一放置於頂部)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -51,34 +52,50 @@ def index():
     link += "<a href=/road>台中市十大肇事路口</a><hr>"
     link += "<a href=/weather>天氣查詢</a><hr>"
     link += "<a href=/rate>本周新片</a><hr>"
-    link += "<a href=/webhook>聊天機器人<a><hr>"
+    link += "<a href=/webhook6>聊天機器人</a><hr>"
     return link
 
-# ==================== 機器人 Webhook 1 (第一個) ====================
-@app.route("/webhook", methods=['POST'])
-def webhook():
-    req = request.get_json(silent=True, force=True)
-    target_rate = req.get("queryResult", {}).get("parameters", {}).get("rate")
-
-    if not target_rate:
-        return jsonify({"fulfillmentText": "陳素宥您好，我沒有收到正確的分級參數喔。"})
-
-    movies_ref = db.collection("本週新片含分級")
-    docs = movies_ref.where("rate", "==", target_rate).get()
+@app.route("/webhook6", methods=["GET", "POST"])
+def webhook6():
+    if request.method == "GET":
+        return "Webhook 伺服器正常運作中！請使用 Dialogflow 等工具發送 POST 請求。"
+        
+    req = request.get_json(force=True)
+    action = req.get("queryResult").get("action")
     
-    movie_list = []
-    for doc in docs:
-        m = doc.to_dict()
-        if m.get("title"):
-            movie_list.append(m.get("title"))
-
-    if movie_list:
-        reply = f"陳素宥您好！為您查詢到本週上映的 {target_rate} 電影有：\n"
-        reply += "、".join(movie_list)
-    else:
-        reply = f"陳素宥您好，目前資料庫中沒有找到符合 {target_rate} 的電影喔。"
-
-    return jsonify({"fulfillmentText": reply})
+    if action == "rateChoice":
+        pass 
+        
+    elif action == "CityWeather":
+        city = req.get("queryResult").get("parameters").get("city")
+        
+        # ⚠️ 如果這個預設 token 不能用，請一定要去氣象署網站申請免費的 CWA-XXXX 授權碼替換
+        token = "rdec-key-123-45678-011121314"
+        
+        url = "https://opendata.cwa.gov.tw/api/v1/rest/datastore/F-C0032-001?Authorization=" + token + "&format=JSON&locationName=" + str(city)
+        
+        try:
+            Data = requests.get(url, verify=False)  # 💡 加上 verify=False 來繞過憑證檢查
+            weather_json = json.loads(Data.text)
+            
+            # 安全檢查：確保氣象局有回傳正確資料
+            if "records" not in weather_json or not weather_json["records"]["location"]:
+                return make_response(jsonify({"fulfillmentText": f"氣象局連線成功，但找不到【{city}】的資料，可能 Token 錯誤或城市名不正確。"}))
+                
+            # 解析資料
+            Weather = weather_json["records"]["location"][0]["weatherElement"][0]["time"][1]["parameter"]["parameterName"]
+            Rain = weather_json["records"]["location"][0]["weatherElement"][1]["time"][0]["parameter"]["parameterName"]
+            MinT = weather_json["records"]["location"][0]["weatherElement"][2]["time"][0]["parameter"]["parameterName"]
+            MaxT = weather_json["records"]["location"][0]["weatherElement"][4]["time"][0]["parameter"]["parameterName"]
+            
+            info = city + "的天氣是" + Weather + "，降雨機率：" + Rain + "%"
+            info += "，溫度：" + MinT + "-" + MaxT + "度"
+            
+            return make_response(jsonify({"fulfillmentText": info}))
+            
+        except Exception as e:
+            # 如果中途任何地方當掉，捕捉錯誤並回傳，不讓連線中斷
+            return make_response(jsonify({"fulfillmentText": f"程式執行發生錯誤：{str(e)}"}))
 
 # ==================== 機器人 Webhook 3 (第二個，名稱已徹底分開) ====================
 @app.route("/webhook3", methods=["POST"])
