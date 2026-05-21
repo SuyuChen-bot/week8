@@ -77,11 +77,11 @@ def webhook6():
         rate = query_result.get("parameters", {}).get("rate")
         
         if rate == "普遍級":
-            info = "🎬 為您推薦的普遍級電影：【玩具總動員4】、【冰雪奇緣2】！"
+            info = "為您推薦的普遍級電影：【玩具總動員4】、【冰雪奇緣2】！"
         elif rate:
-            info = f"🎬 您查詢的是【{rate}】電影，目前正在為您搜尋中！"
+            info = f"您查詢的是【{rate}】電影，目前正在為您搜尋中！"
         else:
-            info = "🎬 請告訴我您想查詢什麼分級的電影（例如：普遍級）。"
+            info = "請告訴我您想查詢什麼分級的電影（例如：普遍級）。"
             
         return make_response(jsonify({"fulfillmentText": info}))
         
